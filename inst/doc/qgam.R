@@ -10,8 +10,7 @@ set.seed(6436)
 fit <- qgam(accel~s(times, k=20, bs="ad"), 
             data = mcycle, 
             qu = 0.8, 
-            err = 0.1,
-            control = list("tol" = 0.01)) # <- sloppy tolerance to speed-up calibration 
+            err = 0.1)
 
 # Plot the fit
 xSeq <- data.frame(cbind("accel" = rep(0, 1e3), "times" = seq(2, 58, length.out = 1e3)))
@@ -41,8 +40,7 @@ set.seed(6436)
 fit <- mqgam(accel~s(times, k=20, bs="ad"), 
              data = mcycle, 
              err = 0.1,
-             qu = quSeq, 
-             control = list("tol" = 0.01)) # <- sloppy tolerance to speed-up calibration 
+             qu = quSeq)
 
 ## ----5-------------------------------------------------------------------
 # Plot the data
@@ -76,10 +74,8 @@ plot(x, dat, col = "grey", ylab = "y")
 for(iq in qus){ lines(x, qnorm(iq, f, sigma)) }
 
 ## ----h2------------------------------------------------------------------
-lsig <- c(-0.96, -0.83, -0.69, -0.63, -0.76, -0.76, -0.89, -0.85, -0.99, -1.06)
 fit <- mqgam(y~s(x, k = 30, bs = "cr"), 
              data = dataf,
-             lsig = lsig,
              qu = qus, err = 0.05)
              
 qus <- seq(0.05, 0.95, length.out = 10)
@@ -99,7 +95,7 @@ lines(x, tmp$fit - 3 * tmp$se.fit, col = 2)
 
 ## ----h4------------------------------------------------------------------
 fit <- qgam(list(y~s(x, k = 30, bs = "cr"), ~ s(x, k = 30, bs = "cr")), 
-            data = dataf, qu = 0.95, err = 0.05, lsig = -1.16)
+            data = dataf, qu = 0.95, err = 0.05, lsig = 0.44)
 
 plot(x, dat, col = "grey", ylab = "y")
 tmp <- predict(fit, se = TRUE)

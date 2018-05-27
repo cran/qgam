@@ -89,6 +89,10 @@ qgam <- function(form, data, qu, lsig = NULL, err = 0.05,
 {
   if( length(qu) > 1 ) stop("length(qu) > 1, so you should use mqgam()")
   
+  # Removing all NAs and unused levels from data
+  if( inherits(data, "groupedData") ) { data <- as.data.frame( data ) }
+  data <- droplevels( na.omit( data ) )
+  
   # Setting up control parameter (mostly used by tuneLearnFast)
   ctrl <- list("gausFit" = NULL, "verbose" = FALSE, "b" = 0, "link" = if(is.formula(form)){"identity"}else{list("identity", "log")})
   
@@ -117,8 +121,8 @@ qgam <- function(form, data, qu, lsig = NULL, err = 0.05,
   # Fit model for fixed log-sigma
   # Do not use 'start' gausFit in gamlss case because it's not to clear how to deal with model for sigma
   if( fam=="elf" && is.null(argGam$start) ) { argGam$start <- coef(ctrl$gausFit) + c(qnorm(qu, 0, sqrt(varHat)), rep(0, length(coef(ctrl$gausFit))-1))  }
-  lam <- err * sqrt(2*pi*varHat) / (2*log(2)*exp(lsig))
-  fit <- do.call("gam", c(list("formula" = form, "family" = get(fam)(qu = qu, lam = lam, theta = lsig), "data" = data), argGam))
+  co <- err * sqrt(2*pi*varHat) / (2*log(2))
+  fit <- do.call("gam", c(list("formula" = form, "family" = get(fam)(qu = qu, co = co, theta = lsig), "data" = data), argGam))
   
   fit$calibr <- learn
   

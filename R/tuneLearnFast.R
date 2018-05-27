@@ -118,11 +118,11 @@
 #' }                
 #'
 tuneLearnFast <- function(form, data, qu, err = 0.05,
-                           multicore = !is.null(cluster), cluster = NULL, ncores = detectCores() - 1, paropts = list(),
-                           control = list(), argGam = NULL)
+                          multicore = !is.null(cluster), cluster = NULL, ncores = detectCores() - 1, paropts = list(),
+                          control = list(), argGam = NULL)
 { 
-  # Removing all NAs from data
-  data <- na.omit( data )
+  # Removing all NAs and unused levels from data
+  data <- droplevels( na.omit( data ) )
   
   n <- nrow(data)
   nq <- length(qu)
@@ -136,7 +136,7 @@ tuneLearnFast <- function(form, data, qu, err = 0.05,
   }
   
   # Setting up control parameter
-  ctrl <- list( "loss" = "cal", "sam" = "boot", "vtype" = "m", "epsB" = 1e-5,
+  ctrl <- list( "loss" = "calFast", "sam" = "boot", "vtype" = "m", "epsB" = 1e-5,
                 "init" = NULL, "brac" = log( c(1/2, 2) ),  "K" = 50,
                 "redWd" = 10, "tol" = .Machine$double.eps^0.25, "aTol" = 0.05, "b" = 0,
                 "gausFit" = NULL,
@@ -147,8 +147,9 @@ tuneLearnFast <- function(form, data, qu, err = 0.05,
   # Entries in "control" substitute those in "ctrl"
   ctrl <- .ctrlSetup(innerCtrl = ctrl, outerCtrl = control)
   
+  if( ctrl$progress == "none" ) { ctrl$progress <- FALSE }
   if( !(ctrl$vtype%in%c("m", "b")) ) stop("control$vtype should be either \"m\" or \"b\" ")
-  if( !(ctrl$loss%in%c("cal", "pin")) ) stop("control$loss should be either \"cal\" or \"pin\" ")
+  if( !(ctrl$loss%in%c("calFast", "cal", "pin")) ) stop("control$loss should be either \"cal\", \"pin\" or \"calFast\" ")
   if( !(ctrl$sam%in%c("boot", "kfold")) ) stop("control$sam should be either \"boot\" or \"kfold\" ")
   if( (ctrl$loss=="cal") && (ctrl$sam=="kfold")  ) stop("You can't use control$sam == \"kfold\" when ctrl$loss==\"cal\" ")
   
@@ -194,24 +195,39 @@ tuneLearnFast <- function(form, data, qu, err = 0.05,
   }
   
   # Create gam object for full data fits
-  mObj <- do.call("gam", c(list("formula" = form, "family" = get(fam)(qu = NA, lam = NA, theta = NA, link = ctrl$link), 
+  mObj <- do.call("gam", c(list("formula" = form, "family" = get(fam)(qu = NA, co = NA, theta = NA, link = ctrl$link), 
                                 "data" = data, "fit" = FALSE), argGam))
   
   # Create gam object for bootstrap fits
-  bObj <- do.call("gam", c(list("formula" = form, "family" = get(fam)(qu = NA, lam = NA, theta = NA, link = ctrl$link), "data" = data, 
+  bObj <- do.call("gam", c(list("formula" = form, "family" = get(fam)(qu = NA, co = NA, theta = NA, link = ctrl$link), "data" = data, 
                                 "sp" = if(length(gausFit$sp)){gausFit$sp}else{NULL}, fit = FALSE), argGam))
   
   # Preparing bootstrap object for gam.fit3
   bObj <- .prepBootObj(obj = bObj, eps = ctrl$epsB, control = argGam$control)
+  
+  # Preparing reparametrization list and hide it within mObj. This will be needed by the sandwich calibration
+  if( ctrl$loss == "calFast" ){
+    mObj$hidRepara <- if(is.formula(form)) { 
+      .prepBootObj(obj = mObj, eps = NULL, control = argGam$control)[ c("UrS", "Mp", "U1") ] 
+    } else { 
+      bObj$Sl 
+    } 
+  }
   
   # Create prediction design matrices for each bootstrap sample or CV fold
   class( mObj ) <- c("gam", "glm", "lm") 
   mObj$coefficients <- rep(0, ncol(mObj$X))  # Needed to fool predict.gam
   pMat <- predict.gam(mObj, newdata = data, type = "lpmatrix")
   
+  # Stuff needed for the sandwich estimator
+  sandStuff <- list("XFull" = pMat,
+                    "EXXT" = crossprod(pMat, pMat) / n,                    # E(xx^T)
+                    "EXEXT" = tcrossprod( colMeans(pMat), colMeans(pMat))) # E(x)E(x)^T
+        
   # Calibration uses the linear predictor for the quantile location, we discard the rest 
   lpi <- attr(gausFit$formula, "lpi")
   if( !is.null(lpi) ){  
+    if( length(lpi[[2]]) ){ lpi[[2]] <- lpi[[2]][ -length(lpi[[2]]) ] } # Need to discard intercept for later
     pMat <- pMat[ , lpi[[1]]] # "lpi" attribute lost here, re-inserted in next line 
     attr(pMat, "lpi") <- lpi 
   }
@@ -260,10 +276,10 @@ tuneLearnFast <- function(form, data, qu, err = 0.05,
       srange <- isig + ef * brac
       
       # Estimate log(sigma) using brent methods with current bracket (srange)
-      res  <- .tuneLearnFast(mObj = mObj, bObj = bObj, pMat = pMat, wb = wb, qu = qu[oi], err = err[oi],
-                              srange = srange, gausFit = gausFit, varHat = varHat,
-                              multicore = multicore, cluster = cluster, ncores = ncores, paropts = paropts,  
-                              control = ctrl, argGam = argGam)  
+      res  <- .tuneLearnFast(mObj = mObj, bObj = bObj, pMat = pMat, sandStuff = sandStuff, wb = wb, qu = qu[oi], err = err[oi],
+                             srange = srange, gausFit = gausFit, varHat = varHat,
+                             multicore = multicore, cluster = cluster, ncores = ncores, paropts = paropts,  
+                             control = ctrl, argGam = argGam)  
       
       # Store loss function evaluations
       store[[oi]] <- cbind(store[[oi]], res[["store"]])
@@ -336,10 +352,10 @@ tuneLearnFast <- function(form, data, qu, err = 0.05,
 ##########################################################################
 ### Internal version, which works for a single quantile qu
 ########################################################################## 
-.tuneLearnFast <- function(mObj, bObj, pMat, wb, qu, err,
-                            srange, gausFit, varHat,
-                            multicore, cluster, ncores, paropts, 
-                            control, argGam)
+.tuneLearnFast <- function(mObj, bObj, pMat, sandStuff, wb, qu, err,
+                           srange, gausFit, varHat,
+                           multicore, cluster, ncores, paropts, 
+                           control, argGam)
 {
   
   # Initializing smoothing parameters using gausFit is a very BAD idea
@@ -349,152 +365,15 @@ tuneLearnFast <- function(form, data, qu, err = 0.05,
   } else { # ... GAMLSS		
     initM <- list("start" = NULL, "in.out" = NULL) # I have no clue
   }
-  
-  # Loss function to be minimized using Brent method
-  objFun <- function(lsig, mObj, bObj, wb, initM, initB, pMat, qu, ctrl, varHat, cluster)
-  { # # # # # # # # # # # # # #  OBJECTIVE FUNCTION START # # # # # # # # # # # # # #
-    
-    if(ctrl$progress){ cat(".")}
-    
-    lam <- err * sqrt(2*pi*varHat) / (2*log(2)*exp(lsig))
-    lpi <- attr(pMat, "lpi")
-    
-    mObj$family$putQu( qu )
-    mObj$family$putLam( lam )
-    mObj$family$putTheta( lsig )
-    
-    # Full data fit
-    withCallingHandlers({
-      mFit <- do.call("gam", c(list("G" = mObj, "in.out" = initM[["in.out"]], "start" = initM[["start"]]), argGam))}, warning = function(w) {
-        if (length(grep("Fitting terminated with step failure", conditionMessage(w))) ||
-            length(grep("Iteration limit reached without full convergence", conditionMessage(w))))
-        {
-          message( paste("qu = ", qu, ", log(sigma) = ", round(lsig, 6), " : outer Newton did not converge fully.", sep = "") )
-          invokeRestart("muffleWarning")
-        }
-      })
-    
-    mMU <- as.matrix(mFit$fit)[ , 1]
-    initM <- list("start" = coef(mFit), "in.out" = list("sp" = mFit$sp, "scale" = 1))
-    
-    # Standard deviation of fitted quantile using full data
-    sdev <- NULL 
-    if(ctrl$loss == "cal" && ctrl$vtype == "m"){
-      Vp <- mFit$Vp
-      # In the gamlss case, we are interested only in the calibrating the location mode
-      if( !is.null(lpi) ){  Vp <- mFit$Vp[lpi[[1]], lpi[[1]]]  }
-      sdev <- sqrt(rowSums((pMat %*% Vp) * pMat)) # same as sqrt(diag(pMat%*%Vp%*%t(pMat))) but (WAY) faster
-    }
-    
-    ## Function to be run in parallel (over boostrapped datasets)  
-    # It has two sets of GLOBAL VARS
-    # Set 1: bObj, pMat, wb, argGam, ctrl    (Exported by tuneLearnFast)
-    # If multicore=F, .funToApply() will look for these inside the objFun call. That's why objFun need them as arguments.
-    # If multicore=T, .funToApply() will look for the in .GlobalEnv. That's why we export them to cluster nodes in tuneLearnFast.
-    # Set 2:  initB, initM, mMU, lam, lsig, qu, sdev   (Exported by .tuneLearnFast)
-    # As before but, if multicore=T, these are exported directly by objFun because they change from one call of objFun to another.
-    .funToApply <- function(ind)
-    {
-      .lpi <- attr(pMat, "lpi")
-      glss <- inherits(bObj$family, "general.family")
-      
-      bObj$lsp0 <- log( initM$in.out$sp )
-      bObj$family$putQu( qu )
-      bObj$family$putLam( lam )
-      bObj$family$putTheta( lsig )
-      
-      z <- init <- vector("list", length(ind))
-      for( kk in ind){
-        # Creating boot weights from boot indexes 
-        .wb <- wb[[kk]]
-        bObj$w <- .wb
-        
-        # Recycle boot initialization, but at first iteration this is NULL... 
-        .init <- if(is.null(initB[[kk]])){ list(initM$start) } else { list(initB[[kk]], initM$start) }
-        
-        if( glss ){ # In gamlss I need to reparametrize initialization and in Ex GAM I need to get null coefficients.
-          .init <- lapply(.init, function(inp) Sl.initial.repara(bObj$Sl, inp, inverse=FALSE, both.sides=FALSE))
-          .fit <- .gamlssFit(x=bObj$X, y=bObj$y, lsp=as.matrix(bObj$lsp0), Sl=bObj$Sl, weights=bObj$w, 
-                             offset=bObj$offset, family=bObj$family, control=bObj$control, 
-                             Mp=bObj$Mp, start=.init, needVb=(ctrl$loss=="cal" && ctrl$vtype=="b"))
-          # In gamlss, we want to calibrate only the location and we need to reparametrize the coefficients
-          .init <- .betas <- Sl.initial.repara(bObj$Sl, .fit$coef, inverse=TRUE, both.sides=FALSE)
-          .betas <- .betas[.lpi[[1]]]
-        } else {
-          bObj$null.coef <- bObj$family$get.null.coef(bObj)$null.coef
-          .fit <- .egamFit(x=bObj$X, y=bObj$y, sp=as.matrix(bObj$lsp0), Eb=bObj$Eb, UrS=bObj$UrS,
-                           offset=bObj$offset, U1=bObj$U1, Mp=bObj$Mp, family = bObj$family, weights=bObj$w,
-                           control=bObj$control, null.coef=bObj$null.coef, 
-                           start=.init, needVb=(ctrl$loss == "cal" && ctrl$vtype == "b"))
-          .init <- .betas <- .fit$coef
-        }
-        
-        .mu <- pMat %*% .betas
-        
-        if( ctrl$loss == "cal" ){ # (1) Return standardized deviations from full data fit OR ... 
-          if( ctrl$vtype == "b" ){ # (2) Use variance of bootstrap fit OR ...
-            .Vp <- .getVp(.fit, bObj, bObj$lsp0, .lpi)
-            .sdev <- sqrt(rowSums((pMat %*% .Vp) * pMat)) # same as sqrt(diag(pMat%*%Vp%*%t(pMat))) but (WAY) faster
-          } else { # (2)  ... variance of the main fit
-            .sdev <- sdev
-          }
-          z[[kk]] <- (.mu - mMU) / .sdev
-        } else { # (1) ... out of sample observations minus their fitted values 
-          z[[kk]] <- (bObj$y - .mu)[ !.wb ]
-        }
-        
-        init[[kk]] <- .init
-      }
-      
-      z <- do.call("c", z)
-      
-      return( list("z" = z, "init" = init) )
-    } 
-    
-    if( !is.null(cluster) ){
-      nc <- length(cluster)
-      environment(.funToApply) <- .GlobalEnv
-      clusterExport(cluster, c("initB", "initM", "mMU", "lam", "lsig", "qu", "sdev"), envir = environment())
-    } else {
-      nc <- 1
-    }
-    
-    # Divide work (boostrap datasets) between cluster workers
-    nbo <- control$K
-    sched <- mapply(function(a, b) rep(a, each = b), 1:nc, 
-                    c(rep(floor(nbo / nc), nc - 1), floor(nbo / nc) + nbo %% nc), SIMPLIFY = FALSE ) 
-    sched <- split(1:nbo, do.call("c", sched))
-    
-    # Loop over bootstrap datasets to get standardized deviations from full data fit
-    withCallingHandlers({
-      out <- llply(.data = sched,
-                   .fun = .funToApply,
-                   .parallel = multicore,
-                   .inform = control[["verbose"]],
-                   .paropts = paropts#,
-                   ### ... arguments start here
-      ) 
-    }, warning = function(w) {
-      # There is a bug in plyr concerning a useless warning about "..."
-      if (length(grep("... may be used in an incorrect context", conditionMessage(w))))
-        invokeRestart("muffleWarning")
-    })
-    
-    tmp <- do.call("c", lapply(out, "[[", "z"))
-    outLoss <- if( ctrl$loss=="cal" ){ .adTest( tmp ) } else { .checkloss(tmp, 0, qu) }
-    initB <- unlist(lapply(out, "[[", "init"), recursive=FALSE)
-    
-    return( list("outLoss" = outLoss, "initM" = initM, "initB" = initB) )
-  } # # # # # # # # # # # # # #  OBJECTIVE FUNCTION END # # # # # # # # # # # # # #
-  
+
   init <- list("initM" = initM, "initB" = vector("list", control$K))
   
   # If we get convergence error, we increase "err" up to 0.2. If the error persists (or if the 
   # error is of another nature) we throw an error
   repeat{
-    res <- tryCatch(.brent(brac=srange, f=objFun, mObj = mObj, bObj = bObj, wb = wb, init = init, 
-                           pMat = pMat, qu = qu, ctrl = control, varHat = varHat, 
-                           cluster = cluster, t = control$tol, aTol = control$aTol), 
+    res <- tryCatch(.brent(brac=srange, f=.objFunLearnFast, mObj = mObj, bObj = bObj, wb = wb, init = init, 
+                           pMat = pMat, SStuff = sandStuff, qu = qu, ctrl = control, varHat = varHat, err = err, argGam = argGam,
+                           multicore = multicore, paropts = paropts, cluster = cluster, t = control$tol, aTol = control$aTol), 
                     error = function(e) e)
     
     if("error" %in% class(res)){

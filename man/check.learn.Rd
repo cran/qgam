@@ -4,10 +4,13 @@
 \alias{check.learn}
 \title{Visual checks for the output of tuneLearn()}
 \usage{
-\method{check}{learn}(obj, ...)
+\method{check}{learn}(obj, sel = 1:2, ...)
 }
 \arguments{
 \item{obj}{the output of a call to \code{tuneLearn}.}
+
+\item{sel}{this function produces two plots, set this parameter to 1 to plot only the first, 
+to 2 to plot only the second or leave it to 1:2 to plot both.}
 
 \item{...}{currently not used, here only for compatibility reasons.}
 }
@@ -38,7 +41,7 @@ check(b)
 }
 \references{
 Fasiolo, M., Goude, Y., Nedellec, R. and Wood, S. N. (2017). Fast calibrated additive quantile regression. 
-            Available at \url{https://github.com/mfasiolo/qgam/blob/master/draft_qgam.pdf}.
+            Available at \url{https://arxiv.org/abs/1707.03307}.
 }
 \author{
 Matteo Fasiolo <matteo.fasiolo@gmail.com>.
