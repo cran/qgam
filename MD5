@@ -1,4 +1,4 @@
-f023d47770821466790b64eac91636a9 *DESCRIPTION
+eba767eb44a864b5ba5366af3d690e7e *DESCRIPTION
 43047867e55f2f63cb2709f0148e90cd *NAMESPACE
 1bb4fd802155c44bff5f37478631ee09 *R/I_adTest.R
 b1fb4dc4e0f00987408028e5cccfda79 *R/I_biasedCov.R
@@ -37,15 +37,10 @@ b8b609c50d5c6853e7ed6c5f4150080d *R/qdo.R
 a3de509ed960000c42a92422aae44f68 *R/tuneLearnFast.R
 146380d9ef679a8cf44d29de69ffbca7 *build/vignette.rds
 10b5d804d5eb1383ab47132e664f51ab *data/UKload.RData
-452a045c80ccab7d6ab03da0270887b8 *inst/CITATION
+6e19ae6e5c96f32d7909a96293eff490 *inst/CITATION
 cd7e5caefd006a2b4f0be2403a5d1c1d *inst/doc/qgam.R
 be114fd4c11bdfca603b989c99dcd791 *inst/doc/qgam.Rmd
-6d8825254b9884faa5daa299e2f45743 *inst/doc/qgam.html
-9fc622373609d2595d1d0e7577eea192 *inst/tests/test-calFastTuneLearn.R
-2106bf432f6b5cc95b590152041fa036 *inst/tests/test-calFastTuneLearnFast.R
-88c2630cb3dd275aa820375d95813eac *inst/tests/test-check_qgam.R
-d746b3ef92d989acfdc176f9ce7fb57d *inst/tests/test-tuneLearn.R
-32ada9a97a3b203b2607ae2310815542 *inst/tests/test-tuneLearnFast.R
+62db4ea705007bb7ee2c6b8d48a47eee *inst/doc/qgam.html
 bc86862c108061edea134cc10678aafb *man/UKload.Rd
 849b3e25e8eef8481a484ed40022070a *man/check.Rd
 de6908d5b04ff235db52c7a92028aa37 *man/check.learn.Rd
@@ -64,5 +59,10 @@ b5a44a4c0c56cfcf6bb0427c0d37aa2e *man/qgam.Rd
 341722c1417cf909add505085c488099 *man/tuneLearnFast.Rd
 0a5018d9bb97f2e613d024f0354d3a49 *src/init.c
 721e37d3b68489ad722cc09933704e3b *src/mgcv_wrap.c
-8f973241c5865355291078ed3b313f3d *tests/testthat.R
+b6338848e143fa04e8f59da1f60a170e *tests/testthat.R
+b1b8e6905bb15e1d3e2f893041d04fbc *tests/testthat/test-calFastTuneLearn.R
+c349cc7ed54c3f554d0338f2fe0082e5 *tests/testthat/test-calFastTuneLearnFast.R
+51cca18f0d99cf5de1434ebd71036b7c *tests/testthat/test-check_qgam.R
+d75460ecb7a8f36a09eb21cdc75f1980 *tests/testthat/test-tuneLearn.R
+d33b8d0a487c94f54b30d70975c173ae *tests/testthat/test-tuneLearnFast.R
 be114fd4c11bdfca603b989c99dcd791 *vignettes/qgam.Rmd
