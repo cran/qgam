@@ -121,8 +121,8 @@ tuneLearnFast <- function(form, data, qu, err = 0.05,
                           multicore = !is.null(cluster), cluster = NULL, ncores = detectCores() - 1, paropts = list(),
                           control = list(), argGam = NULL)
 { 
-  # Removing all NAs and unused levels from data
-  data <- droplevels( na.omit( data ) )
+  # Removing all NAs, unused variables and factor levels from data
+  data <- .cleanData(.dat = data, .form = form, .drop = argGam$drop.unused.levels)
   
   n <- nrow(data)
   nq <- length(qu)
@@ -338,6 +338,8 @@ tuneLearnFast <- function(form, data, qu, err = 0.05,
     
   }
   
+  if( any(errors > err) ){ message("We had to increase \`err\` for some of the quantiles. See fit$calibr$err") }
+  
   names(sigs) <- qu
   
   out <- list("lsig" = sigs, "err" = errors, "ranges" = rans, "store" = store)
@@ -360,7 +362,7 @@ tuneLearnFast <- function(form, data, qu, err = 0.05,
   
   # Initializing smoothing parameters using gausFit is a very BAD idea
   if( is.formula(mObj$formula) ) { # Extended Gam OR ...
-    initM <- list("start" = coef(gausFit) + c(qnorm(qu, 0, sqrt(gausFit$sig2)), rep(0, length(coef(gausFit))-1)), 		
+    initM <- list("start" = coef(gausFit) + c(quantile(gausFit$residuals, qu), rep(0, length(coef(gausFit))-1)), 		
                   "in.out" = NULL) # let gam() initialize sp via initial.spg() 		
   } else { # ... GAMLSS		
     initM <- list("start" = NULL, "in.out" = NULL) # I have no clue

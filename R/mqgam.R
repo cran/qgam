@@ -78,9 +78,8 @@ mqgam <- function(form, data, qu, lsig = NULL, err = 0.05,
 {
   nq <- length(qu)
   
-  # Removing all NAs and unused levels from data
-  if( inherits(data, "groupedData") ) { data <- as.data.frame( data ) }
-  data <- droplevels( na.omit( data ) )
+  # Removing all NAs, unused variables and factor levels from data
+  data <- .cleanData(.dat = data, .form = form, .drop = argGam$drop.unused.levels)
   
   if( length(err) != nq ){
     if(length(err) == 1) { 
@@ -115,6 +114,7 @@ mqgam <- function(form, data, qu, lsig = NULL, err = 0.05,
                            multicore = multicore, cluster = cluster, ncores = ncores, paropts = paropts,
                            control = ctrl, argGam = argGam)
     lsig <- learn$lsig
+    err <- learn$err # Over-writing err parameters!
     out[["calibr"]] <- learn
   } else { # ... use the one provided by the user
     if( length(lsig) == 1 ) {

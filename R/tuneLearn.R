@@ -90,8 +90,8 @@ tuneLearn <- function(form, data, lsig, qu, err = 0.05,
 { 
   if( length(qu) > 1 ) stop("length(qu) > 1, but this method works only for scalar qu")
   
-  # Removing all NAs and unused levels from data
-  data <- droplevels( na.omit( data ) )
+  # Removing all NAs, unused variables and factor levels from data
+  data <- .cleanData(.dat = data, .form = form, .drop = argGam$drop.unused.levels)
   
   lsig <- sort( lsig )
   
@@ -118,7 +118,7 @@ tuneLearn <- function(form, data, lsig, qu, err = 0.05,
     fam <- "elf"
     gausFit <- do.call("gam", c(list("formula" = form, "data" = data), argGam))
     varHat <- gausFit$sig2
-    initM <- list("start" = coef(gausFit) + c(qnorm(qu, 0, sqrt(gausFit$sig2)), rep(0, length(coef(gausFit))-1)), 
+    initM <- list("start" = coef(gausFit) + c(quantile(gausFit$residuals, qu), rep(0, length(coef(gausFit))-1)), 
                   "in.out" = NULL) # let gam() initialize sp via initial.spg() 
   } else {
     fam <- "elflss"

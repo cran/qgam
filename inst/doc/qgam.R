@@ -149,6 +149,60 @@ check.learnFast(fit$calibr, 2:5)
 ## ----c11, message = F----------------------------------------------------
 qdo(fit, 0.2, check)
 
+## ----check1, message = F-------------------------------------------------
+set.seed(5235)
+n <- 1000
+x <- seq(-3, 3, length.out = n)
+X <- cbind(1, x, x^2)
+beta <- c(0, 1, 1)
+f <- drop(X %*% beta)
+dat <- f + rgamma(n, 4, 1)
+dataf <- data.frame(cbind(dat, x))
+names(dataf) <- c("y", "x")
+
+## ----check2, message = F-------------------------------------------------
+qus <- c(0.05, 0.5, 0.95)
+fit <- mqgam(y ~ s(x), data = dataf, qu = qus, err = 0.05)
+
+plot(x, dat, col = "grey", ylab = "y")
+lines(x, f + qgamma(0.95, 4, 1), lty = 2)
+lines(x, f + qgamma(0.5, 4, 1), lty = 2)
+lines(x, f + qgamma(0.05, 4, 1), lty = 2)
+lines(x, qdo(fit, qus[1], predict), col = 2)
+lines(x, qdo(fit, qus[2], predict), col = 2)
+lines(x, qdo(fit, qus[3], predict), col = 2)
+
+## ----check2b, message = F------------------------------------------------
+lfit <- lapply(c(0.01, 0.05, 0.1, 0.2, 0.3, 0.5),
+               function(.inp){
+                 mqgam(y ~ s(x), data = dataf, qu = qus, err = .inp, 
+                       control = list("progress" = F))
+               })
+
+plot(x, dat, col = "grey", ylab = "y", ylim = c(-2, 20))
+colss <- rainbow(length(lfit))
+for(ii in 1:length(lfit)){
+  lines(x, qdo(lfit[[ii]], qus[1], predict), col = colss[ii])
+  lines(x, qdo(lfit[[ii]], qus[2], predict), col = colss[ii])
+  lines(x, qdo(lfit[[ii]], qus[3], predict), col = colss[ii])
+}
+lines(x, f + qgamma(0.95, 4, 1), lty = 2)
+lines(x, f + qgamma(0.5, 4, 1), lty = 2)
+lines(x, f + qgamma(0.05, 4, 1), lty = 2)
+
+## ----check3, message = F-------------------------------------------------
+system.time( fit1 <- qgam(y ~ s(x), data = dataf, qu = 0.95, err = 0.05, 
+                           control = list("progress" = F)) )[[3]]
+system.time( fit2 <- qgam(y ~ s(x), data = dataf, qu = 0.95, err = 0.001, 
+                           control = list("progress" = F)) )[[3]]
+
+## ----check4, message = F-------------------------------------------------
+check(fit1$calibr, sel = 2)
+check(fit2$calibr, sel = 2)
+
+## ----check5, message = F-------------------------------------------------
+check(fit1)
+
 ## ----edf1----------------------------------------------------------------
 data("UKload")
 tmpx <- seq(UKload$Year[1], tail(UKload$Year, 1), length.out = nrow(UKload)) 

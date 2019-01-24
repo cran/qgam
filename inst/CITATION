@@ -5,10 +5,10 @@ citEntry(
          title="Fast calibrated additive quantile regression.",
          author=personList(as.person("Matteo Fasiolo"), as.person("Yannig Goude"),
                     as.person("Raphael Nedellec"), as.person("Simon N. Wood") ), 
-	 year=2018,
+	 year=2017,
 	 url="https://arxiv.org/abs/1707.03307",
 	 textVersion=paste(
-			   "Fasiolo M., Goude Y., Nedellec R. and Wood S. N. (2018).",
+			   "Fasiolo M., Goude Y., Nedellec R. and Wood S. N. (2017).",
 			   "Fast calibrated additive quantile regression.", 
                            "URL: https://arxiv.org/abs/1707.03307" 
 			  ))	 
