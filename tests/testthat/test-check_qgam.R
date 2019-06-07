@@ -25,16 +25,16 @@ context("check_qgam")
 # })
 
 
-test_that("check_qgam_egam", {
-  
-  set.seed(57576)
-  dat <- gamSim(1,n=1000,dist="normal",scale=2, verbose = FALSE)
-  
-  expect_error({
-    
-    fit <- qgam(y~s(x0)+s(x1)+s(x2)+s(x3), data=dat, err = 0.05, qu = 0.9, control = list("progress" = FALSE))
-    invisible(capture.output( check(fit) ))
-    
-  } , NA)
-  
-})
+# test_that("check_qgam_egam", {
+#   
+#   set.seed(57576)
+#   dat <- gamSim(1,n=1000,dist="normal",scale=2, verbose = FALSE)
+#   
+#   expect_error({
+#     
+#     fit <- qgam(y~s(x0)+s(x1)+s(x2)+s(x3), data=dat, qu = 0.9, control = list("progress" = FALSE))
+#     invisible(capture.output( check(fit) ))
+#     
+#   } , NA)
+#   
+# })

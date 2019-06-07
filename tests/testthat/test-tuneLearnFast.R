@@ -31,11 +31,11 @@ context("tuneLearnFast")
 #       ylb <- if((ii %% 2) == 0) { paste(lossType[ii], "multicore") } else { lossType[ii] }
 #       plot(x, dat, col = "grey", ylab = ylb)
 #       tmp <- predict(fit, se = TRUE)
-#       lines(x, tmp$fit[ , 1])
-#       lines(x, tmp$fit[ , 1] + 3 * tmp$se.fit[ , 1], col = 2)
-#       lines(x, tmp$fit[ , 1] - 3 * tmp$se.fit[ , 1], col = 2)
-#       
-#       plot(sort(tun$store[[1]][1, ]), tun$store[[1]][2, ][order(tun$store[[1]][1, ])], type = "b", 
+#       lines(x, tmp$fit)
+#       lines(x, tmp$fit + 3 * tmp$se.fit, col = 2)
+#       lines(x, tmp$fit - 3 * tmp$se.fit, col = 2)
+# 
+#       plot(sort(tun$store[[1]][1, ]), tun$store[[1]][2, ][order(tun$store[[1]][1, ])], type = "b",
 #            ylab = "Calibration loss", xlab = expression(log(sigma)))
 #     }
 #     , NA)
@@ -47,34 +47,34 @@ context("tuneLearnFast")
 
 
 
-test_that("tuneLearnFast_egam", {
-  
-  set.seed(211)
-  dataf <- gamSim(1,n=400,dist="normal",scale=2,verbose=FALSE)
-  form <- y~s(x0)+s(x1)+s(x2)+s(x3)
-  
-  QU <- 0.9
-  lossType <- rep(c("calFast", "cal", "pin"), each = 2)
-  
-  #par(mfrow = c(3, 2))
-  for(ii in 1:2){
-    
-    expect_error({ # Actually we expect NO error!!
-      tun <- tuneLearnFast(form, data = dataf, qu = QU,
-                           control = list("loss" = lossType[ii], "K" = 20, "progress" = FALSE), 
-                           multicore = ((ii %% 2) == 0), ncores = 2)
-      
-      fit <- qgam(form, qu = QU, lsig = tun$lsig, data = dataf)
-      
-      ylb <- if((ii %% 2) == 0) { paste(lossType[ii], "multicore") } else { lossType[ii] }
-      plot(fit, select = 3, ylab = ylb)
-      
-      plot(sort(tun$store[[1]][1, ]), tun$store[[1]][2, ][order(tun$store[[1]][1, ])], type = "b", 
-           ylab = "Calibration loss", xlab = expression(log(sigma)))
-    }
-    , NA)
-    
-  }
-  
-})
+# test_that("tuneLearnFast_egam", {
+#   
+#   set.seed(211)
+#   dataf <- gamSim(1,n=400,dist="normal",scale=2,verbose=FALSE)
+#   form <- y~s(x0)+s(x1)+s(x2)+s(x3)
+#   
+#   QU <- 0.9
+#   lossType <- rep(c("calFast", "cal", "pin"), each = 2)
+#   
+#   #par(mfrow = c(3, 2))
+#   for(ii in 1:2){
+#     
+#     expect_error({ # Actually we expect NO error!!
+#       tun <- tuneLearnFast(form, data = dataf, qu = QU,
+#                            control = list("loss" = lossType[ii], "K" = 20, "progress" = FALSE), 
+#                            multicore = ((ii %% 2) == 0), ncores = 2)
+#       
+#       fit <- qgam(form, qu = QU, lsig = tun$lsig, data = dataf)
+#       
+#       ylb <- if((ii %% 2) == 0) { paste(lossType[ii], "multicore") } else { lossType[ii] }
+#       plot(fit, select = 3, ylab = ylb)
+#       
+#       plot(sort(tun$store[[1]][1, ]), tun$store[[1]][2, ][order(tun$store[[1]][1, ])], type = "b", 
+#            ylab = "Calibration loss", xlab = expression(log(sigma)))
+#     }
+#     , NA)
+#     
+#   }
+#   
+# })
 

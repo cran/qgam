@@ -22,7 +22,7 @@ context("tuneLearn")
 #   for(ii in c(1, 3, 5)){ # Set to 1:6 if you want to test all calibration methods
 # 
 #     expect_error({ # Actually we expect NO error!!
-#       tun <- tuneLearn(form, data = dataf, qu = QU, err = 0.1,
+#       tun <- tuneLearn(form, data = dataf, qu = QU,
 #                        lsig = seq(-4, 5, length.out = 15),
 #                        control = list("loss" = lossType[ii], "progress" = "none", "K" = 20),
 #                        multicore = ((ii %% 2) == 0), ncores = 2)
@@ -32,10 +32,10 @@ context("tuneLearn")
 #       ylb <- if((ii %% 2) == 0) { paste(lossType[ii], "multicore") } else { lossType[ii] }
 #       plot(x, dat, col = "grey", ylab = ylb)
 #       tmp <- predict(fit, se = TRUE)
-#       lines(x, tmp$fit[ , 1])
-#       lines(x, tmp$fit[ , 1] + 3 * tmp$se.fit[ , 1], col = 2)
-#       lines(x, tmp$fit[ , 1] - 3 * tmp$se.fit[ , 1], col = 2)
-#       
+#       lines(x, tmp$fit)
+#       lines(x, tmp$fit + 3 * tmp$se.fit, col = 2)
+#       lines(x, tmp$fit - 3 * tmp$se.fit, col = 2)
+# 
 #       check(tun, sel = 1)
 #     }
 #     , NA)
@@ -46,33 +46,33 @@ context("tuneLearn")
 
 
 
-test_that("tuneLearn_egam", {
-  
-  set.seed(211)
-  dataf <- gamSim(1,n=400,dist="normal",scale=2,verbose=FALSE)
-  form <- y~s(x0)+s(x1)+s(x2)+s(x3)
-
-  QU <- 0.9
-  lossType <- rep(c("calFast", "cal", "pin"), each = 2)
-  
-  #par(mfrow = c(3, 2))
-  for(ii in 1:2){
-  
-    expect_error({ # Actually we expect NO error!!
-      tun <- tuneLearn(form, data = dataf, qu = QU,
-                       lsig = seq(-4, 2, length.out = 20),
-                       control = list("loss" = lossType[ii], "progress" = "none", "K" = 20), 
-                       multicore = ((ii %% 2) == 0), ncores = 2)
-      
-      fit <- qgam(form, qu = QU, lsig = tun$lsig, data = dataf)
-      
-      ylb <- if((ii %% 2) == 0) { paste(lossType[ii], "multicore") } else { lossType[ii] }
-      plot(fit, select = 3, ylab = ylb)
-      check(tun, sel = 1)
-    }
-    , NA)
-    
-  }
-  
-})
+# test_that("tuneLearn_egam", {
+#   
+#   set.seed(211)
+#   dataf <- gamSim(1,n=400,dist="normal",scale=2,verbose=FALSE)
+#   form <- y~s(x0)+s(x1)+s(x2)+s(x3)
+# 
+#   QU <- 0.9
+#   lossType <- rep(c("calFast", "cal", "pin"), each = 2)
+#   
+#   #par(mfrow = c(3, 2))
+#   for(ii in 1:2){
+#   
+#     expect_error({ # Actually we expect NO error!!
+#       tun <- tuneLearn(form, data = dataf, qu = QU,
+#                        lsig = seq(-4, 2, length.out = 20),
+#                        control = list("loss" = lossType[ii], "progress" = "none", "K" = 20), 
+#                        multicore = ((ii %% 2) == 0), ncores = 2)
+#       
+#       fit <- qgam(form, qu = QU, lsig = tun$lsig, data = dataf)
+#       
+#       ylb <- if((ii %% 2) == 0) { paste(lossType[ii], "multicore") } else { lossType[ii] }
+#       plot(fit, select = 3, ylab = ylb)
+#       check(tun, sel = 1)
+#     }
+#     , NA)
+#     
+#   }
+#   
+# })
 

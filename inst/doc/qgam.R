@@ -6,11 +6,9 @@ opts_chunk$set(out.extra='style="display:block; margin: auto"', fig.align="cente
 library(qgam); library(MASS)
 if( suppressWarnings(require(RhpcBLASctl)) ){ blas_set_num_threads(1) } # Optional
 
-set.seed(6436)
 fit <- qgam(accel~s(times, k=20, bs="ad"), 
             data = mcycle, 
-            qu = 0.8, 
-            err = 0.1)
+            qu = 0.8)
 
 # Plot the fit
 xSeq <- data.frame(cbind("accel" = rep(0, 1e3), "times" = seq(2, 58, length.out = 1e3)))
@@ -28,7 +26,6 @@ set.seed(6436)
 cal <- tuneLearn(accel~s(times, k=20, bs="ad"), 
                  data = mcycle, 
                  qu = 0.8,
-                 err = 0.1,
                  lsig = seq(1, 3, length.out = 20), 
                  control = list("progress" = "none")) #<- sequence of values for learning rate
                  
@@ -39,7 +36,6 @@ quSeq <- c(0.2, 0.4, 0.6, 0.8)
 set.seed(6436)
 fit <- mqgam(accel~s(times, k=20, bs="ad"), 
              data = mcycle, 
-             err = 0.1,
              qu = quSeq)
 
 ## ----5-------------------------------------------------------------------
@@ -59,7 +55,7 @@ qdo(fit, qu = 0.4, summary)
 
 ## ----h1------------------------------------------------------------------
 set.seed(651)
-n <- 5000
+n <- 2000
 x <- seq(-4, 3, length.out = n)
 X <- cbind(1, x, x^2)
 beta <- c(0, 1, 1)
@@ -69,16 +65,16 @@ dat <- f + rnorm(n, 0, sigma)
 dataf <- data.frame(cbind(dat, x))
 names(dataf) <- c("y", "x")
    
-qus <- seq(0.05, 0.95, length.out = 10)
+qus <- seq(0.05, 0.95, length.out = 5)
 plot(x, dat, col = "grey", ylab = "y")
 for(iq in qus){ lines(x, qnorm(iq, f, sigma)) }
 
 ## ----h2------------------------------------------------------------------
 fit <- mqgam(y~s(x, k = 30, bs = "cr"), 
              data = dataf,
-             qu = qus, err = 0.05)
+             qu = qus)
              
-qus <- seq(0.05, 0.95, length.out = 10)
+qus <- seq(0.05, 0.95, length.out = 5)
 plot(x, dat, col = "grey", ylab = "y")
 for(iq in qus){ 
  lines(x, qnorm(iq, f, sigma), col = 2)
@@ -95,13 +91,37 @@ lines(x, tmp$fit - 3 * tmp$se.fit, col = 2)
 
 ## ----h4------------------------------------------------------------------
 fit <- qgam(list(y~s(x, k = 30, bs = "cr"), ~ s(x, k = 30, bs = "cr")), 
-            data = dataf, qu = 0.95, err = 0.05, lsig = 0.44)
+            data = dataf, qu = 0.95)
 
 plot(x, dat, col = "grey", ylab = "y")
 tmp <- predict(fit, se = TRUE)
-lines(x, tmp$fit[ , 1])
-lines(x, tmp$fit[ , 1] + 3 * tmp$se.fit[ , 1], col = 2)
-lines(x, tmp$fit[ , 1] - 3 * tmp$se.fit[ , 1], col = 2)
+lines(x, tmp$fit)
+lines(x, tmp$fit + 3 * tmp$se.fit, col = 2)
+lines(x, tmp$fit - 3 * tmp$se.fit, col = 2)
+
+## ----mcy2rnd, message = F------------------------------------------------
+fit <- qgam(accel~s(times, k=20, bs="ad"), 
+            data = mcycle, 
+            qu = 0.8)
+
+# Plot the fit
+xSeq <- data.frame(cbind("accel" = rep(0, 1e3), "times" = seq(2, 58, length.out = 1e3)))
+pred <- predict(fit, newdata = xSeq, se=TRUE)
+plot(mcycle$times, mcycle$accel, xlab = "Times", ylab = "Acceleration", ylim = c(-150, 80))
+lines(xSeq$times, pred$fit, lwd = 1)
+lines(xSeq$times, pred$fit + 2*pred$se.fit, lwd = 1, col = 2)
+lines(xSeq$times, pred$fit - 2*pred$se.fit, lwd = 1, col = 2)   
+
+## ----mcy2rnd2, message = F-----------------------------------------------
+fit <- qgam(list(accel ~ s(times, k=20, bs="ad"), ~ s(times)),
+            data = mcycle, 
+            qu = 0.8)
+
+pred <- predict(fit, newdata = xSeq, se=TRUE)
+plot(mcycle$times, mcycle$accel, xlab = "Times", ylab = "Acceleration", ylim = c(-150, 80))
+lines(xSeq$times, pred$fit, lwd = 1)
+lines(xSeq$times, pred$fit + 2*pred$se.fit, lwd = 1, col = 2)
+lines(xSeq$times, pred$fit - 2*pred$se.fit, lwd = 1, col = 2)  
 
 ## ----c1------------------------------------------------------------------
 library(qgam)
@@ -149,60 +169,6 @@ check.learnFast(fit$calibr, 2:5)
 ## ----c11, message = F----------------------------------------------------
 qdo(fit, 0.2, check)
 
-## ----check1, message = F-------------------------------------------------
-set.seed(5235)
-n <- 1000
-x <- seq(-3, 3, length.out = n)
-X <- cbind(1, x, x^2)
-beta <- c(0, 1, 1)
-f <- drop(X %*% beta)
-dat <- f + rgamma(n, 4, 1)
-dataf <- data.frame(cbind(dat, x))
-names(dataf) <- c("y", "x")
-
-## ----check2, message = F-------------------------------------------------
-qus <- c(0.05, 0.5, 0.95)
-fit <- mqgam(y ~ s(x), data = dataf, qu = qus, err = 0.05)
-
-plot(x, dat, col = "grey", ylab = "y")
-lines(x, f + qgamma(0.95, 4, 1), lty = 2)
-lines(x, f + qgamma(0.5, 4, 1), lty = 2)
-lines(x, f + qgamma(0.05, 4, 1), lty = 2)
-lines(x, qdo(fit, qus[1], predict), col = 2)
-lines(x, qdo(fit, qus[2], predict), col = 2)
-lines(x, qdo(fit, qus[3], predict), col = 2)
-
-## ----check2b, message = F------------------------------------------------
-lfit <- lapply(c(0.01, 0.05, 0.1, 0.2, 0.3, 0.5),
-               function(.inp){
-                 mqgam(y ~ s(x), data = dataf, qu = qus, err = .inp, 
-                       control = list("progress" = F))
-               })
-
-plot(x, dat, col = "grey", ylab = "y", ylim = c(-2, 20))
-colss <- rainbow(length(lfit))
-for(ii in 1:length(lfit)){
-  lines(x, qdo(lfit[[ii]], qus[1], predict), col = colss[ii])
-  lines(x, qdo(lfit[[ii]], qus[2], predict), col = colss[ii])
-  lines(x, qdo(lfit[[ii]], qus[3], predict), col = colss[ii])
-}
-lines(x, f + qgamma(0.95, 4, 1), lty = 2)
-lines(x, f + qgamma(0.5, 4, 1), lty = 2)
-lines(x, f + qgamma(0.05, 4, 1), lty = 2)
-
-## ----check3, message = F-------------------------------------------------
-system.time( fit1 <- qgam(y ~ s(x), data = dataf, qu = 0.95, err = 0.05, 
-                           control = list("progress" = F)) )[[3]]
-system.time( fit2 <- qgam(y ~ s(x), data = dataf, qu = 0.95, err = 0.001, 
-                           control = list("progress" = F)) )[[3]]
-
-## ----check4, message = F-------------------------------------------------
-check(fit1$calibr, sel = 2)
-check(fit2$calibr, sel = 2)
-
-## ----check5, message = F-------------------------------------------------
-check(fit1)
-
 ## ----edf1----------------------------------------------------------------
 data("UKload")
 tmpx <- seq(UKload$Year[1], tail(UKload$Year, 1), length.out = nrow(UKload)) 
@@ -218,13 +184,13 @@ set.seed(41241)
 sigSeq <- seq(4, 8, length.out = 16)
 closs <- tuneLearn(form = form, data = UKload, 
                    lsig = sigSeq, qu = qu, control = list("K" = 20), 
-                   multicore = TRUE, ncores = 2, err = 0.1)
+                   multicore = TRUE, ncores = 2)
 
 check(closs)
 
 ## ----edf4----------------------------------------------------------------
 lsig <- closs$lsig
-fit <- qgam(form = form, data = UKload, lsig = lsig, qu = qu, err = 0.1)
+fit <- qgam(form = form, data = UKload, lsig = lsig, qu = qu)
 plot(fit, scale = F, page = 1)
 
 ## ----edf5----------------------------------------------------------------
