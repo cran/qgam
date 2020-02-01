@@ -1,8 +1,8 @@
 Package: qgam
 Type: Package
 Title: Smooth Additive Quantile Regression Models
-Version: 1.3.0
-Date: 2019-06-06
+Version: 1.3.1
+Date: 2020-02-01
 Authors@R: c(person("Matteo", "Fasiolo", email = "matteo.fasiolo@gmail.com", role = c("aut", "cre")),
              person("Simon", "N. Wood", role = c("ctb")), 
              person("Margaux", "Zaffran", role = c("ctb")), 
@@ -18,17 +18,17 @@ Description: Smooth additive quantile regression models, fitted using
     coverage. The main function is qgam() which is similar to gam() in 'mgcv', but
     fits non-parametric quantile regression models.
 License: GPL (>= 2)
-Depends: mgcv (>= 1.8-28)
+Depends: R (>= 3.5.0), mgcv (>= 1.8-28)
 Imports: shiny, plyr, doParallel, parallel, grDevices
 Suggests: knitr, MASS, RhpcBLASctl, testthat
 VignetteBuilder: knitr
-RoxygenNote: 6.1.1
+RoxygenNote: 7.0.2
 NeedsCompilation: yes
-Packaged: 2019-06-06 17:03:41 UTC; teo
+Packaged: 2020-02-01 17:32:14 UTC; teo
 Author: Matteo Fasiolo [aut, cre],
   Simon N. Wood [ctb],
   Margaux Zaffran [ctb],
   Yannig Goude [ctb],
   Raphael Nedellec [ctb]
 Repository: CRAN
-Date/Publication: 2019-06-07 09:50:04 UTC
+Date/Publication: 2020-02-01 20:40:02 UTC
