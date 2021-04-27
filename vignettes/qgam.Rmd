@@ -361,7 +361,7 @@ The printed output gives some information about the optimizer used to estimate t
 Application to probabilistic electricity load forecasting
 =======================
 
-Here we consider a UK electricity demand dataset, taken from the national grid [website](http://www2.nationalgrid.com/). The dataset covers the period January 2011 to June 2016 and it contains the following variables:
+Here we consider a UK electricity demand dataset, taken from the national grid [website](https://www.nationalgrid.com/). The dataset covers the period January 2011 to June 2016 and it contains the following variables:
 
    - `NetDemand` net electricity demand between 11:30am and 12am.
    - `wM` instantaneous temperature, averaged over several English cities.

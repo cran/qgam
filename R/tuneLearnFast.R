@@ -67,8 +67,10 @@
 #'                                        the loss function has been evaluated and its value (2nd row), for the i-th quantile.}
 #' }
 #' @author Matteo Fasiolo <matteo.fasiolo@@gmail.com>. 
-#' @references Fasiolo, M., Goude, Y., Nedellec, R. and Wood, S. N. (2017). Fast calibrated additive quantile regression. Available at
-#'             \url{https://arxiv.org/abs/1707.03307}.
+#' @references Fasiolo, M., Wood, S.N., Zaffran, M., Nedellec, R. and Goude, Y., 2020. 
+#'             Fast calibrated additive quantile regression. 
+#'             Journal of the American Statistical Association (to appear).
+#'             \url{https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1725521}.
 #' @examples
 #' library(qgam); library(MASS)
 #' 
@@ -170,6 +172,8 @@ tuneLearnFast <- function(form, data, qu, err = NULL,
   tol <- ctrl[["tol"]]
   brac <- ctrl[["brac"]]
   
+  if( length(argGam$sp) && ctrl$loss != c("calFast") ){ stop("Cannot fix smoothing parameters unless control$loss == \"calFast\".") }
+  
   # Sanity check
   if( tol > 0.1 * abs(diff(brac)) ) stop("tol > bracket_widths/10, choose smaller tolerance or larger bracket")
   
@@ -221,6 +225,9 @@ tuneLearnFast <- function(form, data, qu, err = NULL,
   # Create gam object for full data fits
   mObj <- do.call("gam", c(list("formula" = formL, "family" = quote(elf(qu = NA, co = NA, theta = NA, link = ctrl$link)), 
                                 "data" = quote(data), "fit" = FALSE), argGam))
+  
+  # Remove "sp" as it is already been fixed
+  argGam <- argGam[ names(argGam) != "sp" ]
   
   # Create gam object for bootstrap fits
   bObj <- do.call("gam", c(list("formula" = formL, "family" = quote(elf(qu = NA, co = NA, theta = NA, link = ctrl$link)), "data" = quote(data), 

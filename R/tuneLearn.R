@@ -55,8 +55,10 @@
 #'                                           \code{FALSE} means no problem.}
 #'                                           }
 #' @author Matteo Fasiolo <matteo.fasiolo@@gmail.com>. 
-#' @references Fasiolo, M., Goude, Y., Nedellec, R. and Wood, S. N. (2017). Fast calibrated additive quantile regression. Available at
-#'             \url{https://arxiv.org/abs/1707.03307}.
+#' @references Fasiolo, M., Wood, S.N., Zaffran, M., Nedellec, R. and Goude, Y., 2020. 
+#'             Fast calibrated additive quantile regression. 
+#'             Journal of the American Statistical Association (to appear).
+#'             \url{https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1725521}.
 #' @examples
 #' library(qgam); library(MASS)
 #' 
@@ -109,6 +111,8 @@ tuneLearn <- function(form, data, lsig, qu, err = NULL,
   if( !(ctrl$loss%in%c("calFast", "cal", "pin")) ) stop("control$loss should be either \"cal\", \"pin\" or \"calFast\" ")
   if( !(ctrl$sam%in%c("boot", "kfold")) ) stop("control$sam should be either \"boot\" or \"kfold\" ")
   if( (ctrl$loss=="cal") && (ctrl$sam=="kfold")  ) stop("You can't use control$sam == \"kfold\" when ctrl$loss==\"cal\" ")
+  
+  if( length(argGam$sp) && ctrl$loss != c("calFast") ){ stop("Cannot fix smoothing parameters unless control$loss == \"calFast\".") }
   
   n <- nrow(data)
   nt <- length(lsig)

@@ -141,7 +141,7 @@ cqcheck <- function(obj, v, X = NULL, y = NULL, nbin = c(10, 10), bound = NULL, 
   
   # Calculating proportion of observation falling below estimate quantile curve
   n <- nrow(X)
-  mu <- as.matrix(predict(obj, newdata = X))[ , 1]
+  mu <- as.matrix(predict(obj, newdata = X, type = "response"))[ , 1]
   res <- (mu - y) > 0
   qu <- obj$family$getQu()
   
@@ -158,7 +158,7 @@ cqcheck <- function(obj, v, X = NULL, y = NULL, nbin = c(10, 10), bound = NULL, 
     }
     
     # For each bin: count number of responses that are smaller than the fitted quantile
-    indx <- as.factor( .bincode(x1, bound, T, T) )       # Attribute data to bins
+    indx <- as.factor( .bincode(x1, bound, TRUE, TRUE) )       # Attribute data to bins
     levels(indx) <- 1:nbin1
     bsize <- as.vector( table(indx) )                    # Count number of data in each bin
     indx <- as.integer(indx)
