@@ -8,6 +8,7 @@ tuneLearnFast(
   form,
   data,
   qu,
+  discrete = FALSE,
   err = NULL,
   multicore = !is.null(cluster),
   cluster = NULL,
@@ -24,6 +25,8 @@ tuneLearnFast(
 By default the variables are taken from environment(formula): typically the environment from which gam is called.}
 
 \item{qu}{The quantile of interest. Should be in (0, 1).}
+
+\item{discrete}{If TRUE then covariate discretisation is used for faster model fitting. See \code{mgcv::}\link[mgcv]{bam} for details.}
 
 \item{err}{An upper bound on the error of the estimated quantile curve. Should be in (0, 1). 
 Since qgam v1.3 it is selected automatically, using the methods of Fasiolo et al. (2017).
@@ -85,10 +88,13 @@ A list with entries: \itemize{
                   \item{\code{lsig} = a vector containing the values of log(sigma) that minimize the loss function, 
                                       for each quantile.}
                   \item{\code{err} = the error bound used for each quantile. Generally each entry is identical to the
-                                     argument \code{err}, but in some cases the function increases it to enhance stabily.}
+                                     argument \code{err}, but in some cases the function increases it to enhance stability.}
                   \item{\code{ranges} = the search ranges by the Brent algorithm to find log-sigma, for each quantile. }
                   \item{\code{store} = a list, where the i-th entry is a matrix containing all the locations (1st row) at which
                                        the loss function has been evaluated and its value (2nd row), for the i-th quantile.}
+                  \item{\code{final_fit} = a list, where the i-th entry is a list with the estimated conditional quantile 
+                                            (\code{mustart}), smoothing parameters (\code{in.out$sp}) and scale parameter 
+                                            (\code{in.out$scale}, should always be equal to 1) at the optimal value of log(sigma).}
 }
 }
 \description{
@@ -163,7 +169,7 @@ for(iq in quSeq){
 Fasiolo, M., Wood, S.N., Zaffran, M., Nedellec, R. and Goude, Y., 2020. 
             Fast calibrated additive quantile regression. 
             Journal of the American Statistical Association (to appear).
-            \url{https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1725521}.
+            \doi{10.1080/01621459.2020.1725521}.
 }
 \author{
 Matteo Fasiolo <matteo.fasiolo@gmail.com>.

@@ -7,6 +7,7 @@
 #' @param data A data frame or list containing the model response variable and covariates required by the formula.
 #'             By default the variables are taken from environment(formula): typically the environment from which gam is called.
 #' @param qu The quantile of interest. Should be in (0, 1).
+#' @param discrete If TRUE then covariate discretisation is used for faster model fitting. See \code{mgcv::}\link[mgcv]{bam} for details.
 #' @param lsig The value of the log learning rate used to create the Gibbs posterior. By defauls \code{lsig=NULL} and this
 #'             parameter is estimated by posterior calibration described in Fasiolo et al. (2017). Obviously, the function is much faster
 #'             if the user provides a value. 
@@ -31,7 +32,7 @@
 #' @references Fasiolo, M., Wood, S.N., Zaffran, M., Nedellec, R. and Goude, Y., 2020. 
 #'             Fast calibrated additive quantile regression. 
 #'             Journal of the American Statistical Association (to appear).
-#'             \url{https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1725521}.
+#'             \doi{10.1080/01621459.2020.1725521}.
 #' @references Fasiolo, M., Wood, S.N., Zaffran, M., Nedellec, R. and Goude, Y., 2021. 
 #'             qgam: Bayesian Nonparametric Quantile Regression Modeling in R. 
 #'             Journal of Statistical Software, 100(9), 1-31, \doi{10.18637/jss.v100.i09}.
@@ -102,67 +103,61 @@
 #' lines(x, tmp$fit - 2 * tmp$se.fit, col = 2)
 #' }
 #'
-qgam <- function(form, data, qu, lsig = NULL, err = NULL, 
+qgam <- function(form, data, qu, discrete = FALSE, lsig = NULL, err = NULL, 
                  multicore = !is.null(cluster), cluster = NULL, ncores = detectCores() - 1, paropts = list(),
                  control = list(), argGam = NULL)
 {
   if( length(qu) > 1 ) stop("length(qu) > 1, so you should use mqgam()")
   
+  discrete <- .should_we_use_discrete(form = form, discrete = discrete)
+  
+  gam_name <- ifelse(discrete, "bam", "gam")
+  
   # Removing all NAs, unused variables and factor levels from data
   data <- .cleanData(.dat = data, .form = form, .drop = argGam$drop.unused.levels)
   
   # Setting up control parameter (mostly used by tuneLearnFast)
-  ctrl <- list("gausFit" = NULL, "verbose" = FALSE, "b" = 0, "link" = "identity")
+  ctrl <- list("verbose" = FALSE, "b" = 0, "link" = "identity")
   
   # Checking if the control list contains unknown names entries in "control" substitute those in "ctrl"
   ctrl <- .ctrlSetup(innerCtrl = ctrl, outerCtrl = control, verbose = FALSE)
   
-  # Gaussian fit, used for initializations 
-  if( is.formula(form) ) {
-    if( is.null(ctrl[["gausFit"]]) ) { 
-      ctrl$gausFit <- do.call("gam", c(list("formula" = form, "data" = quote(data), 
-                                            "family" = gaussian(link=ctrl[["link"]])), argGam))
-    }
-    varHat <- ctrl$gausFit$sig2
-    formL <- form
-  } else {
-    if( is.null(ctrl[["gausFit"]]) ) { 
-      ctrl$gausFit <- do.call("gam", c(list("formula" = form, "data" = quote(data), 
-                                            "family" = gaulss(link=list(ctrl[["link"]], "logb"), b=ctrl[["b"]])), argGam)) 
-    }
-    varHat <- 1/ctrl$gausFit$fit[ , 2]^2
-    formL <- form[[1]]
+  tmp <- ctrl$init_qgam
+  if(is.null(tmp)){
+    tmp <- .init_gauss_fit(form = form, data = data, ctrl = ctrl, argGam = argGam, qu = qu, discrete = discrete)
   }
+  ctrl$init_qgam <- tmp
+  gausFit <- tmp$gausFit
+  formL <- tmp$formL
+  varHat <- tmp$varHat
+  initM <- tmp$initM
   
   # Get loss smoothness
-  if( is.null(err) ){ err <- .getErrParam(qu = qu, gFit = ctrl$gausFit) }
+  if( is.null(err) ){ err <- .getErrParam(qu = qu, gFit = gausFit, varHat = varHat) }
 
   # Selecting the learning rate sigma
   learn <- NULL
   if( is.null(lsig) ) {  
-    learn <- tuneLearnFast(form = form, data = data, qu = qu, err = err, multicore = multicore, cluster = cluster, 
+    learn <- tuneLearnFast(form = form, data = data, qu = qu, discrete = discrete, err = err, multicore = multicore, cluster = cluster, 
                            ncores = ncores, paropts = paropts, control = ctrl, argGam = argGam)
     lsig <- learn$lsig
     err <- learn$err # Over-writing err parameter!
-  }
-  
-  # Do not use 'start' gausFit in gamlss case because it's not to clear how to deal with model for sigma
-  if( is.null(argGam$start) ) {
-    coefGau <- coef( ctrl$gausFit )
-    # Need to extract coefficients belonging to model for mean (not variance)
-    if( is.list(ctrl$gausFit$formula) ){ 
-      lpi <- attr(predict(ctrl$gausFit, newdata = ctrl$gausFit$model[1:2, , drop = FALSE], type = "lpmatrix"), "lpi")
-      coefGau <- coefGau[ lpi[[1]] ] 
+    argGam$mustart <- learn$final_fit[[1]]$mustart
+    # Annoyingly, initial coeffs are supplied via "coef" argument in bam() and "start" in gam()
+    argGam[[ ifelse(discrete, "coef", "start") ]] <- learn$final_fit[[1]]$coefstart 
+    argGam$in.out <- learn$final_fit[[1]]$in.out
+  } else {
+    if( is.null(argGam$coef) && is.null(argGam$start) && is.null(argGam$mustart)  ) {
+      argGam$mustart <- initM$mustart
+      argGam[[ ifelse(discrete, "coef", "start") ]] <- initM$coefstart
     }
-    # Shift mean fit to quantile of interest
-    argGam$start <- coefGau + c(quantile(residuals(ctrl$gausFit, type="response"), qu), rep(0, length(coefGau) - 1)) 
   }
   
   co <- err * sqrt(2*pi*varHat) / (2*log(2))
   
   # Fit model for fixed log-sigma
-  fit <- do.call("gam", c(list("formula" = formL, "family" = quote(elf(qu = qu, co = co, theta = lsig, link = ctrl$link)), 
-                               "data" = quote(data)), argGam))
+  fit <- do.call(gam_name, c(list("formula" = formL, "family" = quote(elf(qu = qu, co = co, theta = lsig, link = ctrl$link)), 
+                               "data" = quote(data), "discrete" = discrete), argGam))
   
   fit$calibr <- learn
   

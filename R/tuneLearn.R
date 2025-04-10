@@ -10,6 +10,7 @@
 #'             By default the variables are taken from environment(formula): typically the environment from which gam is called.
 #' @param lsig A vector of value of the log learning rate (log(sigma)) over which the calibration loss function is evaluated.
 #' @param qu The quantile of interest. Should be in (0, 1).
+#' @param discrete If TRUE then covariate discretisation is used for faster model fitting. See \code{mgcv::}\link[mgcv]{bam} for details.
 #' @param err An upper bound on the error of the estimated quantile curve. Should be in (0, 1). 
 #'            Since qgam v1.3 it is selected automatically, using the methods of Fasiolo et al. (2017).
 #'            The old default was \code{err=0.05}.
@@ -58,7 +59,7 @@
 #' @references Fasiolo, M., Wood, S.N., Zaffran, M., Nedellec, R. and Goude, Y., 2020. 
 #'             Fast calibrated additive quantile regression. 
 #'             Journal of the American Statistical Association (to appear).
-#'             \url{https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1725521}.
+#'             \doi{10.1080/01621459.2020.1725521}.
 #' @examples
 #' library(qgam); library(MASS)
 #' 
@@ -87,11 +88,13 @@
 #' lines(mcycle$times, pred$fit + 2*pred$se.fit, lwd = 1, col = 2)
 #' lines(mcycle$times, pred$fit - 2*pred$se.fit, lwd = 1, col = 2)                        
 #'
-tuneLearn <- function(form, data, lsig, qu, err = NULL, 
+tuneLearn <- function(form, data, lsig, qu, discrete = FALSE, err = NULL, 
                       multicore = !is.null(cluster), cluster = NULL, ncores = detectCores() - 1, paropts = list(),
                       control = list(), argGam = NULL)
 { 
   if( length(qu) > 1 ) stop("length(qu) > 1, but this method works only for scalar qu")
+  
+  discrete <- .should_we_use_discrete(form = form, discrete = discrete)
   
   # Removing all NAs, unused variables and factor levels from data
   data <- .cleanData(.dat = data, .form = form, .drop = argGam$drop.unused.levels)
@@ -111,35 +114,27 @@ tuneLearn <- function(form, data, lsig, qu, err = NULL,
   if( !(ctrl$loss%in%c("calFast", "cal", "pin")) ) stop("control$loss should be either \"cal\", \"pin\" or \"calFast\" ")
   if( !(ctrl$sam%in%c("boot", "kfold")) ) stop("control$sam should be either \"boot\" or \"kfold\" ")
   if( (ctrl$loss=="cal") && (ctrl$sam=="kfold")  ) stop("You can't use control$sam == \"kfold\" when ctrl$loss==\"cal\" ")
-  
+  if(discrete && ctrl$loss != "calFast"){ stop("discrete = TRUE can be used only with control$loss != \"calFast\"") }
   if( length(argGam$sp) && ctrl$loss != c("calFast") ){ stop("Cannot fix smoothing parameters unless control$loss == \"calFast\".") }
   
   n <- nrow(data)
   nt <- length(lsig)
   
-  # Gaussian fit, used for initializations 
-  # NB Initializing smoothing parameters using gausFit is a very BAD idea
-  if( is.formula(form) ) {
-    gausFit <- do.call("gam", c(list("formula" = form, "data" = quote(data), 
-                                     "family" = gaussian(link=ctrl[["link"]])), argGam))
-    varHat <- gausFit$sig2
-    initM <- list("start" = coef(gausFit) + c(quantile(gausFit$residuals, qu), rep(0, length(coef(gausFit))-1)), 
-                  "in.out" = NULL) # let gam() initialize sp via initial.spg() 
-    formL <- form
-  } else {
-    gausFit <- do.call("gam", c(list("formula" = form, "data" = quote(data), 
-                                     "family" = gaulss(link=list(ctrl[["link"]], "logb"), b=ctrl[["b"]])), argGam))
-    varHat <- 1/gausFit$fit[ , 2]^2
-    initM <- list("start" = NULL, "in.out" = NULL) # Have no cluse
-    formL <- form[[1]]
-  }  
+  tmp <- ctrl$init_qgam
+  if( is.null(tmp) ){
+    tmp <- .init_gauss_fit(form = form, data = data, ctrl = ctrl, argGam = argGam, qu = qu, discrete = discrete)
+  }
+  gausFit <- tmp$gausFit
+  formL <- tmp$formL
+  varHat <- tmp$varHat
+  initM <- tmp$initM[[1]]
   
   # Get loss smoothness
-  if( is.null(err) ){ err <- .getErrParam(qu = qu, gFit = gausFit) }
+  if( is.null(err) ){ err <- .getErrParam(qu = qu, gFit = gausFit, varHat = varHat) }
   
   # For each value of 'lsig' fit on full data
   main <- .tuneLearnFullFits(lsig = lsig, form = formL, fam = "elf", qu = qu, err = err,
-                             ctrl = ctrl, data = data, argGam = argGam, gausFit = gausFit, 
+                             ctrl = ctrl, data = data, discrete = discrete, argGam = argGam, gausFit = gausFit, 
                              varHat = varHat, initM = initM)
   
   # Get score for each value of 'lsig'
@@ -147,7 +142,7 @@ tuneLearn <- function(form, data, lsig, qu, err = NULL,
     sapply(main[["store"]], "[[", "loss")
   } else { # ... bootstrapping or cross-validation
     .tuneLearnBootstrapping(lsig = lsig, form = formL, fam = "elf", qu = qu, ctrl = ctrl, 
-                            data = data, store = main[["store"]], pMat = main[["pMat"]], 
+                            data = data, store = main[["store"]], pMat = main[["pMat"]], gausFit = gausFit,
                             argGam = argGam, multicore = multicore, cluster = cluster, 
                             ncores = ncores, paropts = paropts)
   }
@@ -156,7 +151,7 @@ tuneLearn <- function(form, data, lsig, qu, err = NULL,
   # convProb indicates whether there have been convergence problems during smoothing parameter estimation
   convProb <- sapply(main[["store"]], "[[", "convProb")
   names(convProb) <- lsig
-    
+  
   out <- list("lsig" = lsig[which.min(outLoss)], "loss" = outLoss, 
               "edf" = main[["edfStore"]], "convProb" = convProb)
   attr(out, "class") <- "learn"

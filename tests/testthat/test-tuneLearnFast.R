@@ -19,7 +19,7 @@ context("tuneLearnFast")
 # 
 #   par(mfrow = c(3, 2))
 #   par(mar = c(5.1, 4.1, 0.1, 2.1))
-#   for(ii in c(1, 3, 5)){ # Set to 1:6 if you want to test all calibration methods
+#   for(ii in 1:6){ #c(1, 3, 5)){ # Set to 1:6 if you want to test all calibration methods
 # 
 #     expect_error({ # Actually we expect NO error!!
 #       tun <- tuneLearnFast(form, data = dataf, qu = QU,
@@ -48,33 +48,33 @@ context("tuneLearnFast")
 # 
 # 
 # test_that("tuneLearnFast_egam", {
-#   
+# 
 #   set.seed(211)
 #   dataf <- gamSim(1,n=400,dist="normal",scale=2,verbose=FALSE)
 #   form <- y~s(x0)+s(x1)+s(x2)+s(x3)
-#   
+# 
 #   QU <- 0.9
 #   lossType <- rep(c("calFast", "cal", "pin"), each = 2)
-#   
+# 
 #   #par(mfrow = c(3, 2))
 #   for(ii in 1:2){
-#     
+# 
 #     expect_error({ # Actually we expect NO error!!
 #       tun <- tuneLearnFast(form, data = dataf, qu = QU,
-#                            control = list("loss" = lossType[ii], "K" = 20, "progress" = FALSE), 
+#                            control = list("loss" = lossType[ii], "K" = 20, "progress" = FALSE),
 #                            multicore = ((ii %% 2) == 0), ncores = 2)
-#       
+# 
 #       fit <- qgam(form, qu = QU, lsig = tun$lsig, data = dataf)
-#       
+# 
 #       ylb <- if((ii %% 2) == 0) { paste(lossType[ii], "multicore") } else { lossType[ii] }
 #       plot(fit, select = 3, ylab = ylb)
-#       
-#       plot(sort(tun$store[[1]][1, ]), tun$store[[1]][2, ][order(tun$store[[1]][1, ])], type = "b", 
+# 
+#       plot(sort(tun$store[[1]][1, ]), tun$store[[1]][2, ][order(tun$store[[1]][1, ])], type = "b",
 #            ylab = "Calibration loss", xlab = expression(log(sigma)))
 #     }
 #     , NA)
-#     
+# 
 #   }
-#   
+# 
 # })
 

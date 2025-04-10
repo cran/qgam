@@ -53,6 +53,13 @@ for(iq in quSeq){
 # Summary for quantile 0.4
 qdo(fit, qu = 0.4, summary)
 
+## -----------------------------------------------------------------------------
+dat <- gamSim(1, n=40000, dist="normal", scale=2)
+
+b <- qgam(y ~ s(x0)+s(x1)+s(x2)+s(x3),data=dat, qu = 0.1, discrete = TRUE)
+
+plot(b, pages = 1)
+
 ## ----h1-----------------------------------------------------------------------
 set.seed(651)
 n <- 2000

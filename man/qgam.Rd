@@ -8,6 +8,7 @@ qgam(
   form,
   data,
   qu,
+  discrete = FALSE,
   lsig = NULL,
   err = NULL,
   multicore = !is.null(cluster),
@@ -25,6 +26,8 @@ qgam(
 By default the variables are taken from environment(formula): typically the environment from which gam is called.}
 
 \item{qu}{The quantile of interest. Should be in (0, 1).}
+
+\item{discrete}{If TRUE then covariate discretisation is used for faster model fitting. See \code{mgcv::}\link[mgcv]{bam} for details.}
 
 \item{lsig}{The value of the log learning rate used to create the Gibbs posterior. By defauls \code{lsig=NULL} and this
 parameter is estimated by posterior calibration described in Fasiolo et al. (2017). Obviously, the function is much faster
@@ -130,7 +133,7 @@ lines(x, tmp$fit - 2 * tmp$se.fit, col = 2)
 Fasiolo, M., Wood, S.N., Zaffran, M., Nedellec, R. and Goude, Y., 2020. 
             Fast calibrated additive quantile regression. 
             Journal of the American Statistical Association (to appear).
-            \url{https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1725521}.
+            \doi{10.1080/01621459.2020.1725521}.
 
 Fasiolo, M., Wood, S.N., Zaffran, M., Nedellec, R. and Goude, Y., 2021. 
             qgam: Bayesian Nonparametric Quantile Regression Modeling in R. 

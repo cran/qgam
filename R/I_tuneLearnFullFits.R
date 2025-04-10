@@ -1,27 +1,27 @@
 ###############
 #### Internal function that does the full-data fits
 ###############
-.tuneLearnFullFits <- function(lsig, form, fam, qu, err, ctrl, data, argGam, gausFit, varHat, initM){
+.tuneLearnFullFits <- function(lsig, form, fam, qu, err, ctrl, data, discrete, argGam, gausFit, varHat, initM){
   
   n <- nrow(data)
   nt <- length(lsig)
   
+  gam_name <- ifelse(discrete, "bam", "gam")
+  
   # Create gam object for full data fits
-  mainObj <- do.call("gam", c(list("formula" = form, 
-                                   "family" = quote(elf(qu = qu, co = NA, theta = NA, link = ctrl$link)), 
-                                   "data" = quote(data), "fit" = FALSE), 
-                              argGam))
+  mObj <- do.call(gam_name, c(list("formula" = form, 
+                                      "family" = quote(elf(qu = qu, co = NA, theta = NA, link = ctrl$link)), 
+                                      "data" = quote(data), "discrete" = discrete, "fit" = FALSE), 
+                                 argGam))
   
   # Remove "sp" as it is already been fixed
   argGam <- argGam[ names(argGam) != "sp" ]
   
-  # Create reparametrization list for... 
-  repar <- if( is.list(form) ){ # ... GAMLSS case OR...
-    Sl.setup( mainObj )
-  } else { # ... extended GAM case
-    .prepBootObj(obj = mainObj, eps = NULL, control = argGam$control)[ c("UrS", "Mp", "U1") ]
-  } # these are needed for sandwich calibration
-  
+  # Preparing reparametrization list and hide it within mObj. This will be needed by the sandwich calibration
+  if( ctrl$loss == "calFast" ){
+    mObj$hidRepara <- .prepBootObj(obj = mObj, eps = NULL, control = argGam$control)[ c("UrS", "Mp", "U1") ]
+  }
+
   # Store degrees of freedom for each value of lsig
   tmp <- pen.edf( gausFit )
   if( length(tmp) ) {
@@ -34,12 +34,15 @@
   store <- vector("list", nt)
   for( ii in 1:nt ) # START lsigma loop, from smallest to largest (because when lsig is large the smooth params diverge)
   {
-    mainObj$family$putCo( err * sqrt(2*pi*varHat) / (2*log(2)) )
-    mainObj$family$putTheta( lsig[ii] )
+    mObj$family$putCo( err * sqrt(2*pi*varHat) / (2*log(2)) )
+    mObj$family$putTheta( lsig[ii] )
     
     convProb <- FALSE # Variable indicating convergence problems
     withCallingHandlers({
-      fit <- do.call("gam", c(list("G" = quote(mainObj), "in.out" = initM[["in.out"]], "start" = initM[["start"]]), argGam)) 
+      call_list <- c(list("G" = quote(mObj), "in.out" = initM[["in.out"]], "mustart" = initM[["mustart"]], "discrete" = discrete), argGam)
+      # Annoyingly, initial coeffs are supplied via "coef" argument in bam() and "start" in gam()
+      call_list[[ ifelse(discrete, "coef", "start") ]] <- initM$coefstart 
+      mFit <- do.call(gam_name, call_list) 
     }, warning = function(w) {
       if (length(grep("Fitting terminated with step failure", conditionMessage(w))) ||
           length(grep("Iteration limit reached without full convergence", conditionMessage(w))))
@@ -51,50 +54,61 @@
     })
   
     if( !is.null(edfStore) ) { 
-      edfStore[[ii]] <- c(lsig[ii], pen.edf(fit)) 
+      edfStore[[ii]] <- c(lsig[ii], pen.edf(mFit)) 
     }
     
     # Create prediction matrix (only in the first iteration)
     if( ii == 1 ){
-      pMat <- pMatFull <- predict.gam(fit, type = "lpmatrix") 
-      lpi <- attr(pMat, "lpi")
-      if( !is.null(lpi) ){ 
-        pMat <- pMat[ , lpi[[1]]] # "lpi" attribute lost here
-        attr(pMat, "lpi") <- lpi
+      # Stuff needed for the sandwich estimator
+      if(discrete){
+        pMat <- NULL
+        colmX <- XWyd(X=mObj$Xd,w=rep(1,n),y=rep(1,n),k=mObj$kd,ks=mObj$ks,
+                      ts=mObj$ts,dt=mObj$dt,v=mObj$v,qc=mObj$qc,drop=mObj$drop)/n
+        sandStuff <- list("XFull" = pMat,
+                          "EXXT" = XWXd(X=mObj$Xd,w=rep(1,n),k=mObj$kd,ks=mObj$ks,
+                                        ts=mObj$ts,dt=mObj$dt,v=mObj$v,qc=mObj$qc,
+                                        drop=mObj$drop)/n,  # E(xx^T)
+                          "EXEXT" = tcrossprod( colmX, colmX)) # E(x)E(x)^T
+      }else{
+        pMat <- predict.gam(mFit, type = "lpmatrix")
+        sandStuff <- list("XFull" = pMat,
+                          "EXXT" = crossprod(pMat, pMat) / n,                    # E(xx^T)
+                          "EXEXT" = tcrossprod( colMeans(pMat), colMeans(pMat))) # E(x)E(x)^T
       }
     }
     
+    # Standard deviation of fitted quantile using full data
     sdev <- NULL 
     if(ctrl$loss %in% c("cal", "calFast") && ctrl$vtype == "m"){
-      Vp <- fit$Vp
-      # In the gamlss case, we are interested only in the calibrating the location mode
-      if( !is.null(lpi) ){  Vp <- fit$Vp[lpi[[1]], lpi[[1]]]  }
-      sdev <- sqrt(rowSums((pMat %*% Vp) * pMat)) # same as sqrt(diag(pMat%*%Vp%*%t(pMat))) but (WAY) faster
+      Vp <- mFit$Vp
+      if(discrete){
+        sdev <- diagXVXd(X=mObj$Xd,V=Vp,k=mObj$kd,ks=mObj$ks,ts=mObj$ts,
+                         dt=mObj$dt,v=mObj$v,qc=mObj$qc,drop=mObj$drop)^.5
+      }else{
+        sdev <- sqrt(rowSums((pMat %*% Vp) * pMat)) # same as sqrt(diag(pMat%*%Vp%*%t(pMat))) but (WAY) faster
+      }
     }
     
-    initM <- list("start" = coef(fit), "in.out" = list("sp" = fit$sp, "scale" = 1))
+    initM <- list("mustart" = mFit$fitted.values, 
+                  "coefstart" = coef(mFit),
+                  "in.out" = list("sp" = if(gam_name == "bam" & !is.null(mFit$full.sp)){ mFit$full.sp } else { mFit$sp }, "scale" = 1))
     
     if( ctrl$loss == "calFast" ){ # Fast calibration OR ...
-      if( ii == 1 ){
-        EXXT <- crossprod(pMatFull, pMatFull) / n                       # E(xx^T)
-        EXEXT <- tcrossprod( colMeans(pMatFull), colMeans(pMatFull) )   # E(x)E(x)^T
-      }
-      Vbias <- .biasedCov(fit = fit, X = pMatFull, EXXT = EXXT, EXEXT = EXEXT, lpi = lpi)
-      
-      store[[ii]] <- list("loss" = .sandwichLoss(mFit = fit, X = pMat, XFull = pMatFull, sdev = sdev, repar = repar, 
-                                                 alpha = Vbias$alpha, VSim = Vbias$V), 
-                          "convProb" = convProb)
+      Vbias <- .biasedCov(fit = mFit, X = sandStuff$XFull, EXXT = sandStuff$EXXT, EXEXT = sandStuff$EXEXT, mObj = mObj)
+      outLoss <- .sandwichLoss(mFit = mFit, X = pMat, sdev = sdev, repar = mObj$hidRepara, 
+                               alpha = Vbias$alpha, VSim = Vbias$V, mObj = mObj)
+      store[[ii]] <- list("loss" = outLoss, "convProb" = convProb)
     } else { # Bootstrapping or cross-validation: full data fit will be used when fitting the bootstrap datasets
-      store[[ii]] <- list("sp" = fit$sp, "fit" = fit$fitted, "co" = fit$family$getCo(), 
-                          "init" = initM$start, "sdev" = sdev, "weights" = fit$working.weights, 
-                          "res" = fit$residuals, "convProb" = convProb)
+      store[[ii]] <- list("sp" = mFit$sp, "fit" = mFit$fitted, "co" = mFit$family$getCo(), 
+                          "init" = initM$coefstart, "sdev" = sdev, "weights" = mFit$working.weights, 
+                          "res" = mFit$residuals, "convProb" = convProb)
     }
     
   } 
   
   if( !is.null(edfStore) ){
     edfStore <- do.call("rbind", edfStore)
-    colnames(edfStore) <- c("lsig", names( pen.edf(fit) ))
+    colnames(edfStore) <- c("lsig", names( pen.edf(mFit) ))
   }
   
   return( list("store" = store, 

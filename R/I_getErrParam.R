@@ -2,17 +2,11 @@
 # Get "err" parameter for automatic loss smoothness selection 
 ##############
 #
-.getErrParam <- function(qu, gFit){
+.getErrParam <- function(qu, gFit, varHat){
   
   # Estimated conditional mean and variance (latter could be constant)
-  if( is.list(gFit$formula) ) {
-    muHat <- gFit$fitted.values[ , 1]
-    varHat <- 1 / gFit$fitted.values[ , 2]^2
-  } else {
-    muHat <- gFit$fitted.values
-    varHat <- gFit$sig2
-  }
-  
+  muHat <- as.matrix(gFit$fitted.values)[ , 1]
+
   # Raw residuals from Gaussian regression, normalized using estimated conditional SD
   r <- ( gFit$y - muHat ) / sqrt( varHat )
 
@@ -22,7 +16,7 @@
   # First use anova to find degrees of freedom of parametric terms in equation for location
   # Then find EDF of smooth terms in equation for location. unique() needed for "adaptive" smooths
   anv <- anova( gFit )
-  d <- sum( anv$pTerms.df[ !grepl("\\.1", rownames(anv$pTerms.table)) ] )
+  d <- sum(anv$pTerms.df[!grepl("\\.1", rownames(anv$pTerms.table))]) + ("(Intercept)" %in% names(anv$p.coeff))
   d <- d + sum( unique(pen.edf(gFit)[!grepl("s\\.1|te\\.1|ti\\.1|t2\\.1", names(pen.edf(gFit)))]) )
   
   # Estimate parameters of shash density on standardized residuals

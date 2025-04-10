@@ -7,6 +7,7 @@
 #' @param data A data frame or list containing the model response variable and covariates required by the formula.
 #'             By default the variables are taken from environment(formula): typically the environment from which gam is called.
 #' @param qu A vectors of quantiles of interest. Each entry should be in (0, 1).
+#' @param discrete If TRUE then covariate discretisation is used for faster model fitting. See \code{mgcv::}\link[mgcv]{bam} for details.
 #' @param lsig The value of the log learning rate used to create the Gibbs posterior. By defauls \code{lsig=NULL} and this
 #'             parameter is estimated by posterior calibration described in Fasiolo et al. (2017). Obviously, the function is much faster
 #'             if the user provides a value. 
@@ -41,7 +42,7 @@
 #' @references Fasiolo, M., Wood, S.N., Zaffran, M., Nedellec, R. and Goude, Y., 2020. 
 #'             Fast calibrated additive quantile regression. 
 #'             Journal of the American Statistical Association (to appear).
-#'             \url{https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1725521}.
+#'             \doi{10.1080/01621459.2020.1725521}.
 #' @references Fasiolo, M., Wood, S.N., Zaffran, M., Nedellec, R. and Goude, Y., 2021. 
 #'             qgam: Bayesian Nonparametric Quantile Regression Modeling in R. 
 #'             Journal of Statistical Software, 100(9), 1-31, \doi{10.18637/jss.v100.i09}.
@@ -76,11 +77,13 @@
 #'   lines(xSeq$times, pred, col = 2)
 #' }
 #'
-mqgam <- function(form, data, qu, lsig = NULL, err = NULL, 
+mqgam <- function(form, data, qu, discrete = FALSE, lsig = NULL, err = NULL, 
                   multicore = !is.null(cluster), cluster = NULL, ncores = detectCores() - 1, paropts = list(),
                   control = list(), argGam = NULL)
 {
   nq <- length(qu)
+  
+  discrete <- .should_we_use_discrete(form = form, discrete = discrete)
   
   # Removing all NAs, unused variables and factor levels from data
   data <- .cleanData(.dat = data, .form = form, .drop = argGam$drop.unused.levels)
@@ -94,29 +97,18 @@ mqgam <- function(form, data, qu, lsig = NULL, err = NULL,
   }
   
   # Setting up control parameter (mostly used by tuneLearnFast)
-  ctrl <- list("gausFit" = NULL, "verbose" = FALSE, "b" = 0, "link" = "identity")
+  ctrl <- list("verbose" = FALSE, "b" = 0, "link" = "identity")
   
   # Checking if the control list contains unknown names entries in "control" substitute those in "ctrl"
   ctrl <- .ctrlSetup(innerCtrl = ctrl, outerCtrl = control, verbose = FALSE)
   
-  # Initial Gaussian fit
-  if( is.null(ctrl[["gausFit"]]) )
-  {
-    if( is.formula(form) ){
-      gausFit <- do.call("gam", c(list("formula" = form, "data" = quote(data), 
-                                       "family" = gaussian(link=ctrl[["link"]])), argGam))
-    } else {
-      gausFit <- do.call("gam", c(list("formula" = form, "data" = quote(data), 
-                                       "family" = gaulss(link=list(ctrl[["link"]], "logb"), b=ctrl[["b"]])), argGam))
-    }
-    ctrl[["gausFit"]] <- gausFit
-  }
-  
+  ctrl$init_qgam <- .init_gauss_fit(form = form, data = data, ctrl = ctrl, argGam = argGam, qu = qu, discrete = discrete)
+
   # Output list
   out <- list()
   
   if( is.null(lsig) ) { # Selecting the learning rate sigma OR ....
-    learn <- tuneLearnFast(form = form, data = data, err = err, qu = qu,
+    learn <- tuneLearnFast(form = form, data = data, err = err, qu = qu, discrete = discrete,
                            multicore = multicore, cluster = cluster, ncores = ncores, paropts = paropts,
                            control = ctrl, argGam = argGam)
     lsig <- learn$lsig
@@ -132,7 +124,17 @@ mqgam <- function(form, data, qu, lsig = NULL, err = NULL,
   # Fitting a quantile model for each qu
   out[["fit"]] <- lapply(1:nq, function(ii){
     
-    .out <- qgam(form, data, qu[ii], lsig = lsig[ii], err = err[ii], multicore = FALSE, control = ctrl, argGam = argGam)
+    if( !is.null(out$calibr) ){
+      # Annoyingly, initial coeffs are supplied via "coef" argument in bam() and "start" in gam()
+      argGam[[ ifelse(discrete, "coef", "start") ]] <- learn$final_fit[[ii]]$coefstart 
+      argGam$mustart <- learn$final_fit[[ii]]$mustart
+      argGam$in.out <- learn$final_fit[[ii]]$in.out
+      ctrl$init_qgam$initM <- NA # initM should NOT be used by qgam, hence we want to get an error if it gets used.
+    } else {
+      ctrl$initM <- ctrl$initM[[ii]]
+    }
+      
+    .out <- qgam(form, data, qu[ii], lsig = lsig[ii], err = err[ii], discrete = discrete, multicore = FALSE, control = ctrl, argGam = argGam)
     
     # Removing data and smooth matrix to reduce memory requirements. There quantities
     # are kept only inside the first fit ( qfit[[1]] )
@@ -155,10 +157,6 @@ mqgam <- function(form, data, qu, lsig = NULL, err = NULL,
   out[["fit"]][[1]][["call"]][["data"]] <- NULL
   
   class(out) <- "mqgam"
-  
-#   out[["qu"]] <- qu
-#   out[["co"]] <- co
-#   out[["lsig"]] <- lsig
   
   return( out )
 }

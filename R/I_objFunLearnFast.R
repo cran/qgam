@@ -6,16 +6,22 @@
 { 
   if(ctrl$progress){ cat(".")}
   
+  discrete <- !is.null(mObj$Xd)
+  gam_name <- ifelse(discrete, "bam", "gam")
+
   co <- err * sqrt(2*pi*varHat) / (2*log(2))
-  lpi <- attr(pMat, "lpi")
-  
+
   mObj$family$putQu( qu )
   mObj$family$putCo( co )
   mObj$family$putTheta( lsig )
   
-  # Full data fit
-  withCallingHandlers({
-    mFit <- do.call("gam", c(list("G" = quote(mObj), "in.out" = initM[["in.out"]], "start" = initM[["start"]]), argGam))}, warning = function(w) {
+  
+  call_list <- c(list("G" = quote(mObj), "in.out" = initM[["in.out"]], "mustart" = initM[["mustart"]], "discrete" = discrete), argGam)
+  
+  # Annoyingly, initial coeffs are supplied via "coef" argument in bam() and "start" in gam()
+  call_list[[ ifelse(discrete, "coef", "start") ]] <- initM$coefstart 
+
+  withCallingHandlers({ mFit <- do.call(gam_name, call_list) }, warning = function(w) {
       if (length(grep("Fitting terminated with step failure", conditionMessage(w))) ||
           length(grep("Iteration limit reached without full convergence", conditionMessage(w))))
       {
@@ -24,26 +30,33 @@
       }
     })
   
-  mMU <- as.matrix(mFit$fit)[ , 1]
-  initM <- list("start" = coef(mFit), "in.out" = list("sp" = mFit$sp, "scale" = 1))
+  mMU <- mFit$fit
+  initM <- list("mustart" = mFit$fitted.values, 
+                "coefstart" = coef(mFit), 
+                "in.out" = list("sp" = if(gam_name == "bam" && !is.null(mFit$full.sp)){ mFit$full.sp } else { mFit$sp }, "scale" = 1))
   
   # Standard deviation of fitted quantile using full data
   sdev <- NULL 
   if(ctrl$loss %in% c("cal", "calFast") && ctrl$vtype == "m"){
     Vp <- mFit$Vp
-    # In the gamlss case, we are interested only in the calibrating the location mode
-    if( !is.null(lpi) ){  Vp <- mFit$Vp[lpi[[1]], lpi[[1]]]  }
-    sdev <- sqrt(rowSums((pMat %*% Vp) * pMat)) # same as sqrt(diag(pMat%*%Vp%*%t(pMat))) but (WAY) faster
+    if(discrete){
+      sdev <- diagXVXd(X=mObj$Xd,V=Vp,k=mObj$kd,ks=mObj$ks,ts=mObj$ts,
+                       dt=mObj$dt,v=mObj$v,qc=mObj$qc,drop=mObj$drop)^.5
+    }else{
+      sdev <- sqrt(rowSums((pMat %*% Vp) * pMat)) # same as sqrt(diag(pMat%*%Vp%*%t(pMat))) but (WAY) faster
+    }
   }
   
   if(ctrl$loss == "calFast"){ # Fast calibration OR ...
    
-    Vbias <- .biasedCov(fit = mFit, X = SStuff$XFull, EXXT = SStuff$EXXT, EXEXT = SStuff$EXEXT, lpi = lpi)
-    outLoss <- .sandwichLoss(mFit = mFit, X = pMat, XFull = SStuff$XFull, sdev = sdev, repar = mObj$hidRepara, 
-                             alpha = Vbias$alpha, VSim = Vbias$V)
+    Vbias <- .biasedCov(fit = mFit, X = SStuff$XFull, EXXT = SStuff$EXXT, EXEXT = SStuff$EXEXT, mObj = mObj)
+    outLoss <- .sandwichLoss(mFit = mFit, X = pMat, sdev = sdev, repar = mObj$hidRepara, 
+                             alpha = Vbias$alpha, VSim = Vbias$V, mObj = mObj)
     initB <- NULL
     
   } else { # ... bootstrapping or cross-validation
+    if(discrete){ stop("discrete = TRUE allowed only when \"control$loss == calFast\"")}
+    
     ## Function to be run in parallel (over boostrapped datasets)  
     # It has two sets of GLOBAL VARS
     # Set 1: bObj, pMat, wb, argGam, ctrl    (Exported by tuneLearnFast)
@@ -53,9 +66,6 @@
     # As before but, if multicore=T, these are exported directly by objFun because they change from one call of objFun to another.
     .funToApply <- function(ind)
     {
-      .lpi <- attr(pMat, "lpi")
-      glss <- inherits(bObj$family, "general.family")
-      
       bObj$lsp0 <- log( initM$in.out$sp )
       bObj$family$putQu( qu )
       bObj$family$putCo( co )
@@ -69,31 +79,22 @@
         bObj$w <- .wb
         
         # Recycle boot initialization, but at first iteration this is NULL... 
-        .init <- if(is.null(initB[[kk]])){ list(initM$start) } else { list(initB[[kk]], initM$start) }
+        .init <- if(is.null(initB[[kk]])){ list(initM$coefstart) } else { list(initB[[kk]], initM$coefstart) }
         
-        if( glss ){ # In gamlss I need to reparametrize initialization and in Ex GAM I need to get null coefficients.
-          .init <- lapply(.init, function(inp) Sl.initial.repara(bObj$Sl, inp, inverse=FALSE, both.sides=FALSE))
-          .fit <- .gamlssFit(x=bObj$X, y=bObj$y, lsp=as.matrix(bObj$lsp0), Sl=bObj$Sl, weights=bObj$w, 
-                             offset=bObj$offset, family=bObj$family, control=bObj$control, 
-                             Mp=bObj$Mp, start=.init, needVb=(ctrl$loss=="cal" && ctrl$vtype=="b"))
-          
-          # In gamlss, we want to calibrate only the location and we need to reparametrize the coefficients
-          .init <- .betas <- Sl.initial.repara(bObj$Sl, .fit$coef, inverse=TRUE, both.sides=FALSE)
-          .betas <- .betas[.lpi[[1]]]
-        } else {
-          bObj$null.coef <- bObj$family$get.null.coef(bObj)$null.coef
-          .fit <- .egamFit(x=bObj$X, y=bObj$y, sp=as.matrix(bObj$lsp0), Eb=bObj$Eb, UrS=bObj$UrS,
-                           offset=bObj$offset, U1=bObj$U1, Mp=bObj$Mp, family = bObj$family, weights=bObj$w,
-                           control=bObj$control, null.coef=bObj$null.coef, 
-                           start=.init, needVb=(ctrl$loss == "cal" && ctrl$vtype == "b"))
-          .init <- .betas <- .fit$coef
-        }
+        # I need to get null coefficients.
+        bObj$null.coef <- bObj$family$get.null.coef(bObj)$null.coef
+        .fit <- .egamFit(x=bObj$X, y=bObj$y, sp=as.matrix(bObj$lsp0), Eb=bObj$Eb, UrS=bObj$UrS,
+                         offset=bObj$offset, U1=bObj$U1, Mp=bObj$Mp, family = bObj$family, weights=bObj$w,
+                         control=bObj$control, null.coef=bObj$null.coef, 
+                         start=.init, needVb=(ctrl$loss == "cal" && ctrl$vtype == "b"))
+        .init <- .betas <- .fit$coef
+        
         
         .mu <- pMat %*% .betas
         
         if( ctrl$loss == "cal" ){ # (1) Return standardized deviations from full data fit OR ... 
           if( ctrl$vtype == "b" ){ # (2) Use variance of bootstrap fit OR ...
-            .Vp <- .getVp(.fit, bObj, bObj$lsp0, .lpi)
+            .Vp <- .fit$Vp
             .sdev <- sqrt(rowSums((pMat %*% .Vp) * pMat)) # same as sqrt(diag(pMat%*%Vp%*%t(pMat))) but (WAY) faster
           } else { # (2)  ... variance of the main fit
             .sdev <- sdev

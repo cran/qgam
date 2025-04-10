@@ -23,7 +23,7 @@
 #' @references Fasiolo, M., Wood, S.N., Zaffran, M., Nedellec, R. and Goude, Y., 2020. 
 #'             Fast calibrated additive quantile regression. 
 #'             Journal of the American Statistical Association (to appear).
-#'             \url{https://www.tandfonline.com/doi/full/10.1080/01621459.2020.1725521}.
+#'             \doi{10.1080/01621459.2020.1725521}.
 #' @examples
 #' library(qgam)
 #' set.seed(0)
@@ -47,15 +47,22 @@ check.qgam <- function(obj,
   # Here we are estimating E( Phi(y, mu, lam*sig) - I(y > mu) | x ) using a Gaussian GAM
   co <- obj$family$getCo()
   sig <- exp( obj$family$getTheta() )
-  if( is.list(obj$formula) ) { sig <- sig * obj$fitted.values[ , 2] }
-  lam <- co / sig
+  lam <- co
   
   dat <- obj$model
-  form <- if( is.list(obj$formula) ) { obj$formula[[1]] } else { obj$formula }
+  form <- obj$formula
   res <- dat[[ form[[2]] ]] - as.matrix(obj$fitted.values)[ , 1]
   form[[2]] <- as.symbol( "bias" )
   
-  dat$bias <- plogis(res, 0, sig*lam) - as.numeric(res > 0)
+  dat$bias <- plogis(res, 0, lam) - as.numeric(res > 0)
+  
+  # Need to handle offsets
+  offi <- which(sapply(names(dat), function(.x) grepl("offset(", .x, fixed=TRUE)))
+  if(length(offi)){
+    for(ii in offi){
+      names(dat)[ii] <- gsub(")","",gsub("offset(","",names(dat)[ii], fixed = TRUE)) 
+    }
+  }
   
   fitBias <- gam(form, data = dat) 
   hist(fitBias$fitted.values, xlab = expression(F(hat(mu)) - F(mu[0])), main = "Bias due to smoothed loss")
